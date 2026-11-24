@@ -1,0 +1,12 @@
+{
+  "id": "numeracy", "version": 1, "title": "Everyday numeracy", "titleHi": "रोज़मर्रा का गणित",
+  "questions": [
+    {"id":"q1","level":1,"en":"You have 8 pencils and get 4 more. How many do you have?","hi":"आपके पास 8 पेंसिल हैं और 4 और मिलती हैं। कुल कितनी पेंसिल हैं?","choices":[10,12,14],"answer":12,"why":"Add 8 and 4 to make 12.","whyHi":"8 और 4 जोड़ने पर 12 होते हैं।"},
+    {"id":"q2","level":1,"en":"There are 15 mangoes. You give away 6. How many are left?","hi":"15 आम में से आपने 6 दे दिए। कितने बचे?","choices":[9,11,21],"answer":9,"why":"Subtract 6 from 15 to get 9.","whyHi":"15 में से 6 घटाने पर 9 बचते हैं।"},
+    {"id":"q3","level":1,"en":"You put 7 books on each of two shelves. How many books are there?","hi":"दो अलमारियों में 7-7 किताबें हैं। कुल कितनी किताबें हैं?","choices":[7,14,16],"answer":14,"why":"Two groups of 7 make 14.","whyHi":"7 के दो समूह मिलकर 14 होते हैं।"},
+    {"id":"q4","level":2,"en":"Each bag has 6 oranges. How many oranges are in 4 bags?","hi":"हर थैले में 6 संतरे हैं। 4 थैलों में कितने संतरे हैं?","choices":[10,20,24],"answer":24,"why":"Four groups of 6 make 24.","whyHi":"6 के चार समूह मिलकर 24 होते हैं।"},
+    {"id":"q5","level":2,"en":"Share 28 stickers equally among 7 friends. How many does each get?","hi":"28 स्टिकर 7 दोस्तों में बराबर बाँटें। हर दोस्त को कितने मिलेंगे?","choices":[4,5,7],"answer":4,"why":"28 divided by 7 is 4.","whyHi":"28 को 7 से भाग देने पर 4 मिलता है।"},
+    {"id":"q6","level":3,"en":"A shop charges ₹18 per notebook. You buy three and pay ₹100. What change do you get?","hi":"एक कॉपी ₹18 की है। आप तीन कॉपियाँ लेकर ₹100 देते हैं। कितने रुपये वापस मिलेंगे?","choices":[46,54,64],"answer":46,"why":"Three notebooks cost ₹54. Subtract ₹54 from ₹100.","whyHi":"तीन कॉपियों का मूल्य ₹54 है। ₹100 में से ₹54 घटाएँ।"},
+    {"id":"q7","level":3,"en":"A class packs 36 books into boxes of 8. How many books are left after filling as many boxes as possible?","hi":"36 किताबों को 8-8 के डिब्बों में रखें। अधिकतम डिब्बे भरने के बाद कितनी किताबें बचेंगी?","choices":[2,4,8],"answer":4,"why":"Four boxes hold 32 books. Four books remain.","whyHi":"चार डिब्बों में 32 किताबें आती हैं। 4 किताबें बचती हैं।"}
+  ]
+}
