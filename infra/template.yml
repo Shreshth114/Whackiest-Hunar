@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Hunar prototype - PWA, authenticated API and private evidence
+Parameters:
+  ArtifactBucket: {Type: String}
+  ArtifactKey: {Type: String}
+  AuthDomain: {Type: String}
+  ElevenLabsSecretArn: {Type: String, Default: ''}
+  ElevenLabsVoiceId: {Type: String, Default: ''}
+  BedrockModelArn: {Type: String, Default: ''}
+Conditions:
+  HasVoiceSecret: !Not [!Equals [!Ref ElevenLabsSecretArn, '']]
+  HasBedrockModel: !Not [!Equals [!Ref BedrockModelArn, '']]
+Resources:
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [POST, GET, HEAD]
+            AllowedHeaders: ['*']
+            AllowedOrigins: [!Sub 'https://${Distribution.DomainName}']
+            MaxAge: 600
+  State:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties: {Name: !Sub '${AWS::StackName}-api', ProtocolType: HTTP}
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref Api
+      StageName: '$default'
+      AutoDeploy: true
+      DefaultRouteSettings: {ThrottlingBurstLimit: 25, ThrottlingRateLimit: 12}
+  OriginAccess:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-web'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        HttpVersion: http2
+        Origins:
+          - Id: Web
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !Ref OriginAccess
+            S3OriginConfig: {OriginAccessIdentity: ''}
+          - Id: Api
+            DomainName: !Sub '${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+            CustomOriginConfig: {OriginProtocolPolicy: https-only, OriginReadTimeout: 30}
+        DefaultCacheBehavior:
+          TargetOriginId: Web
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: '/api/*'
+            TargetOriginId: Api
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+  WebPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudfront.amazonaws.com}
+            Action: s3:GetObject
+            Resource: !Sub '${SiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      Policies:
+        PasswordPolicy: {MinimumLength: 14, RequireLowercase: true, RequireUppercase: true, RequireNumbers: true, RequireSymbols: true}
+  Domain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties: {Domain: !Ref AuthDomain, UserPoolId: !Ref UserPool}
+  UserClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: Hunar Web
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, profile]
+      CallbackURLs: [!Sub 'https://${Distribution.DomainName}/']
+      LogoutURLs: [!Sub 'https://${Distribution.DomainName}/']
+  WorkerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: {GroupName: worker, UserPoolId: !Ref UserPool}
+  ReviewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: {GroupName: reviewer, UserPoolId: !Ref UserPool}
+  EmployerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: {GroupName: employer, UserPoolId: !Ref UserPool}
+  TeacherGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: {GroupName: teacher, UserPoolId: !Ref UserPool}
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      ManagedPolicyArns: [!Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']
+      Policies:
+        - PolicyName: HunarApiData
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt State.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion, s3:PutObject]
+                Resource: !Sub '${EvidenceBucket.Arn}/evidence/*'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt EvidenceBucket.Arn
+              - !If
+                - HasVoiceSecret
+                - {Effect: Allow, Action: 'secretsmanager:GetSecretValue', Resource: !Ref ElevenLabsSecretArn}
+                - !Ref AWS::NoValue
+              - !If
+                - HasBedrockModel
+                - {Effect: Allow, Action: 'bedrock:InvokeModel', Resource: !Ref BedrockModelArn}
+                - !Ref AWS::NoValue
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: server/aws.handler
+      Role: !GetAtt ApiRole.Arn
+      MemorySize: 256
+      Timeout: 26
+      Code: {S3Bucket: !Ref ArtifactBucket, S3Key: !Ref ArtifactKey}
+      Environment:
+        Variables:
+          STATE_TABLE: !Ref State
+          EVIDENCE_BUCKET: !Ref EvidenceBucket
+          COGNITO_CLIENT_ID: !Ref UserClient
+          COGNITO_URL: !Sub 'https://${AuthDomain}.auth.${AWS::Region}.amazoncognito.com'
+          ELEVENLABS_SECRET_ARN: !Ref ElevenLabsSecretArn
+          ELEVENLABS_VOICE_ID: !Ref ElevenLabsVoiceId
+          BEDROCK_MODEL_ARN: !Ref BedrockModelArn
+  Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*'
+  Jwt:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref Api
+      Name: Cognito
+      AuthorizerType: JWT
+      IdentitySource: ['$request.header.Authorization']
+      JwtConfiguration:
+        Audience: [!Ref UserClient]
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      IntegrationMethod: POST
+      PayloadFormatVersion: '2.0'
+  PrivateRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: {ApiId: !Ref Api, RouteKey: 'ANY /api/{path+}', AuthorizationType: JWT, AuthorizerId: !Ref Jwt, Target: !Sub 'integrations/${Integration}'}
+  ConfigRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: {ApiId: !Ref Api, RouteKey: 'GET /api/config', AuthorizationType: NONE, Target: !Sub 'integrations/${Integration}'}
+  PassportRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: {ApiId: !Ref Api, RouteKey: 'GET /api/passport/{token}', AuthorizationType: NONE, Target: !Sub 'integrations/${Integration}'}
+Outputs:
+  WebUrl: {Value: !Sub 'https://${Distribution.DomainName}/'}
+  WebBucket: {Value: !Ref SiteBucket}
+  DistributionId: {Value: !Ref Distribution}
+  UserPoolId: {Value: !Ref UserPool}
+  EvidenceBucketName: {Value: !Ref EvidenceBucket}

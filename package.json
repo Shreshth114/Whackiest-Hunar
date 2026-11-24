@@ -1,0 +1,16 @@
+{
+  "name": "hunar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env.local server/local.mjs",
+    "demo": "node --env-file-if-exists=.env.local server/local.mjs --fresh",
+    "test": "node --test test/flows.test.mjs",
+    "deploy:aws": "bash infra/deploy.sh",
+    "test:http": "node test/http-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
